@@ -1,13 +1,19 @@
-import React, { useState, forwardRef, useImperativeHandle, useRef } from 'react'
-import { usePropsValue } from '../../utils/use-props-value'
 import { CloseCircleFill } from 'antd-mobile-icons'
-import { NativeProps, withNativeProps } from '../../utils/native-props'
-import { mergeProps } from '../../utils/with-default-props'
 import classNames from 'classnames'
-import { useIsomorphicLayoutEffect } from 'ahooks'
+import React, {
+  ReactNode,
+  forwardRef,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react'
 import { bound } from '../../utils/bound'
+import { NativeProps, withNativeProps } from '../../utils/native-props'
+import { usePropsValue } from '../../utils/use-props-value'
 import { isIOS } from '../../utils/validate'
+import { mergeProps } from '../../utils/with-default-props'
 import { useConfig } from '../config-provider'
+import useInputHandleKeyDown from './useInputHandleKeyDown'
 
 const classPrefix = `adm-input`
 
@@ -45,22 +51,16 @@ export type InputProps = Pick<
   | 'placeholder'
   | 'readOnly'
   | 'disabled'
+  | 'enterKeyHint'
 > & {
   value?: string
   defaultValue?: string
   onChange?: (val: string) => void
   clearable?: boolean
+  clearIcon?: ReactNode
   onlyShowClearWhenFocus?: boolean
   onClear?: () => void
   onEnterPress?: (e: React.KeyboardEvent<HTMLInputElement>) => void
-  enterKeyHint?:
-    | 'enter'
-    | 'done'
-    | 'go'
-    | 'next'
-    | 'previous'
-    | 'search'
-    | 'send'
   min?: number
   max?: number
 } & NativeProps<
@@ -70,6 +70,7 @@ export type InputProps = Pick<
 
 const defaultProps = {
   defaultValue: '',
+  clearIcon: <CloseCircleFill />,
   onlyShowClearWhenFocus: true,
 }
 
@@ -80,13 +81,20 @@ export type InputRef = {
   nativeElement: HTMLInputElement | null
 }
 
-export const Input = forwardRef<InputRef, InputProps>((p, ref) => {
-  const props = mergeProps(defaultProps, p)
-  const [value, setValue] = usePropsValue(props)
+export const Input = forwardRef<InputRef, InputProps>((props, ref) => {
+  const { locale, input: componentConfig = {} } = useConfig()
+  const mergedProps = mergeProps(defaultProps, componentConfig, props)
+  const [value, setValue] = usePropsValue(mergedProps)
   const [hasFocus, setHasFocus] = useState(false)
   const compositionStartRef = useRef(false)
   const nativeInputRef = useRef<HTMLInputElement>(null)
-  const { locale } = useConfig()
+
+  const handleKeydown = useInputHandleKeyDown({
+    onEnterPress: mergedProps.onEnterPress,
+    onKeyDown: mergedProps.onKeyDown,
+    nativeInputRef,
+    enterKeyHint: mergedProps.enterKeyHint,
+  })
 
   useImperativeHandle(ref, () => ({
     clear: () => {
@@ -103,27 +111,16 @@ export const Input = forwardRef<InputRef, InputProps>((p, ref) => {
     },
   }))
 
-  const handleKeydown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (props.onEnterPress && (e.code === 'Enter' || e.keyCode === 13)) {
-      props.onEnterPress(e)
-    }
-    props.onKeyDown?.(e)
-  }
-
-  useIsomorphicLayoutEffect(() => {
-    if (!props.enterKeyHint) return
-    nativeInputRef.current?.setAttribute('enterkeyhint', props.enterKeyHint)
-    return () => {
-      nativeInputRef.current?.removeAttribute('enterkeyhint')
-    }
-  }, [props.enterKeyHint])
-
   function checkValue() {
     let nextValue = value
-    if (props.type === 'number') {
+    if (mergedProps.type === 'number') {
       const boundValue =
         nextValue &&
-        bound(parseFloat(nextValue), props.min, props.max).toString()
+        bound(
+          parseFloat(nextValue),
+          mergedProps.min,
+          mergedProps.max
+        ).toString()
       // fix the display issue of numbers starting with 0
       if (Number(nextValue) !== Number(boundValue)) {
         nextValue = boundValue
@@ -135,8 +132,8 @@ export const Input = forwardRef<InputRef, InputProps>((p, ref) => {
   }
 
   const shouldShowClear = (() => {
-    if (!props.clearable || !value || props.readOnly) return false
-    if (props.onlyShowClearWhenFocus) {
+    if (!mergedProps.clearable || !value || mergedProps.readOnly) return false
+    if (mergedProps.onlyShowClearWhenFocus) {
       return hasFocus
     } else {
       return true
@@ -144,11 +141,11 @@ export const Input = forwardRef<InputRef, InputProps>((p, ref) => {
   })()
 
   return withNativeProps(
-    props,
+    mergedProps,
     <div
       className={classNames(
         `${classPrefix}`,
-        props.disabled && `${classPrefix}-disabled`
+        mergedProps.disabled && `${classPrefix}-disabled`
       )}
     >
       <input
@@ -160,46 +157,47 @@ export const Input = forwardRef<InputRef, InputProps>((p, ref) => {
         }}
         onFocus={e => {
           setHasFocus(true)
-          props.onFocus?.(e)
+          mergedProps.onFocus?.(e)
         }}
         onBlur={e => {
           setHasFocus(false)
           checkValue()
-          props.onBlur?.(e)
+          mergedProps.onBlur?.(e)
         }}
-        id={props.id}
-        placeholder={props.placeholder}
-        disabled={props.disabled}
-        readOnly={props.readOnly}
-        maxLength={props.maxLength}
-        minLength={props.minLength}
-        max={props.max}
-        min={props.min}
-        autoComplete={props.autoComplete}
-        autoFocus={props.autoFocus}
-        pattern={props.pattern}
-        inputMode={props.inputMode}
-        type={props.type}
-        name={props.name}
-        autoCapitalize={props.autoCapitalize}
-        autoCorrect={props.autoCorrect}
+        id={mergedProps.id}
+        placeholder={mergedProps.placeholder}
+        disabled={mergedProps.disabled}
+        readOnly={mergedProps.readOnly}
+        maxLength={mergedProps.maxLength}
+        minLength={mergedProps.minLength}
+        max={mergedProps.max}
+        min={mergedProps.min}
+        autoComplete={mergedProps.autoComplete}
+        enterKeyHint={mergedProps.enterKeyHint}
+        autoFocus={mergedProps.autoFocus}
+        pattern={mergedProps.pattern}
+        inputMode={mergedProps.inputMode}
+        type={mergedProps.type}
+        name={mergedProps.name}
+        autoCapitalize={mergedProps.autoCapitalize}
+        autoCorrect={mergedProps.autoCorrect}
         onKeyDown={handleKeydown}
-        onKeyUp={props.onKeyUp}
+        onKeyUp={mergedProps.onKeyUp}
         onCompositionStart={e => {
           compositionStartRef.current = true
-          props.onCompositionStart?.(e)
+          mergedProps.onCompositionStart?.(e)
         }}
         onCompositionEnd={e => {
           compositionStartRef.current = false
-          props.onCompositionEnd?.(e)
+          mergedProps.onCompositionEnd?.(e)
         }}
-        onClick={props.onClick}
-        step={props.step}
-        role={props.role}
-        aria-valuenow={props['aria-valuenow']}
-        aria-valuemax={props['aria-valuemax']}
-        aria-valuemin={props['aria-valuemin']}
-        aria-label={props['aria-label']}
+        onClick={mergedProps.onClick}
+        step={mergedProps.step}
+        role={mergedProps.role}
+        aria-valuenow={mergedProps['aria-valuenow']}
+        aria-valuemax={mergedProps['aria-valuemax']}
+        aria-valuemin={mergedProps['aria-valuemin']}
+        aria-label={mergedProps['aria-label']}
       />
       {shouldShowClear && (
         <div
@@ -209,7 +207,7 @@ export const Input = forwardRef<InputRef, InputProps>((p, ref) => {
           }}
           onClick={() => {
             setValue('')
-            props.onClear?.()
+            mergedProps.onClear?.()
 
             // https://github.com/ant-design/ant-design-mobile/issues/5212
             if (isIOS() && compositionStartRef.current) {
@@ -219,7 +217,7 @@ export const Input = forwardRef<InputRef, InputProps>((p, ref) => {
           }}
           aria-label={locale.Input.clear}
         >
-          <CloseCircleFill />
+          {mergedProps.clearIcon}
         </div>
       )}
     </div>
